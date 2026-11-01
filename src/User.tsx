@@ -22,7 +22,7 @@ export default function User({p}:{p:Profile}){
   }
   const it=items.find(i=>i.id===sel)
   return <Shell title={`أهلاً ${p.full_name}`}>
-    <div className="rounded-2xl bg-amber-800 p-5 text-center text-white"><div className="text-sm opacity-80">{g?g.title:'لا توجد قعدة نشطة'}</div><div className="mt-1 text-3xl font-bold">إجمالي حسابك: {egp(total)}</div></div>
+    <div className="rounded-2xl bg-amber-800 p-5 text-center text-white"><div className="text-sm opacity-80">{g?g.title:'لا توجد قعدة نشطة'}</div><div className="mt-1 text-3xl font-bold">حسابك لحد دلوقتي: {egp(total)}</div></div>
     <div className="grid grid-cols-2 gap-2">{['إضافة طلب','طلباتي'].map((t,i)=><button key={t} onClick={()=>setTab(i)} className={'rounded-xl py-3 font-bold '+(tab===i?'bg-amber-900 text-white':'bg-white')}>{t}</button>)}</div>
     {tab===0&&(g?<div className={card+' space-y-3'}>
       <div className="grid grid-cols-2 gap-2">{items.map(i=><button key={i.id} onClick={()=>setSel(i.id)} className={'rounded-xl border-2 p-3 text-start '+(sel===i.id?'border-amber-800 bg-amber-50':'border-amber-100')}><div className="font-bold">{i.name}</div><div className="text-sm text-stone-500">{egp(i.price)}</div></button>)}</div>
