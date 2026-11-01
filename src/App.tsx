@@ -1,6 +1,7 @@
-import {useEffect,useState,FormEvent} from 'react'
+import {useEffect,useRef,useState,FormEvent} from 'react'
 import {sb,Profile,email,useRealtime} from './lib'
-import {Shell,DebugPanel,btn,inp,card} from './ui'
+import {Shell,DebugPanel,SoundToggle,btn,inp,card} from './ui'
+import {armFirstInteraction} from './sound'
 import User from './User'
 import Admin from './Admin'
 
@@ -24,7 +25,7 @@ function Auth(){
       else setErr('تعذر التسجيل، حاول مرة أخرى')
     }
   }
-  return <div className="min-h-screen ahwa-bg p-6"><form onSubmit={submit} className="mx-auto mt-10 max-w-sm space-y-3">
+  return <div className="min-h-screen ahwa-bg p-6"><SoundToggle className="fixed left-3 top-3 z-20 bg-white/80 text-amber-900 shadow"/><form onSubmit={submit} className="mx-auto mt-10 max-w-sm space-y-3">
     <img src="/hero.jpg" alt="" className="mx-auto w-full max-w-xs rounded-3xl shadow-md"/><h1 className="text-center text-4xl font-bold text-amber-900">قعدتنا</h1><p className="text-center text-sm text-amber-800">قعدة أصحاب على القهوة البلدي</p>
     <p className="text-center text-stone-500">{reg?'إنشاء حساب جديد':'تسجيل الدخول'}</p>
     {reg&&<input className={inp} placeholder="الاسم" value={f.name} onChange={e=>setF({...f,name:e.target.value})}/>}
@@ -40,6 +41,8 @@ function Auth(){
 
 export default function App(){
   const [p,setP]=useState<Profile|null>(null),[ready,setReady]=useState(false),[msg,setMsg]=useState('')
+  const st=useRef({ready:false,auth:false});st.current={ready,auth:ready&&!p}
+  useEffect(()=>armFirstInteraction(()=>st.current),[])
   const load=async()=>{
     const {data:{session}}=await sb.auth.getSession()
     if(!session){setP(null);setReady(true);return}

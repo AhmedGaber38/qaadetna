@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react'
 import {Minus,Plus} from 'lucide-react'
 import {sb,Item,Gath,Order,Profile,egp,dt,toast,useRealtime} from './lib'
 import {Shell,btn,card} from './ui'
+import {playTea} from './sound'
 
 export default function User({p}:{p:Profile}){
   const [items,setItems]=useState<Item[]>([]),[g,setG]=useState<Gath|null>(null),[orders,setOrders]=useState<Order[]>([])
@@ -18,7 +19,7 @@ export default function User({p}:{p:Profile}){
     if(busy||!sel)return;setBusy(true)
     const {error}=await sb.rpc('add_order',{p_item:sel,p_qty:q});setBusy(false)
     if(error)toast('تعذر إضافة الطلب، ربما القعدة مغلقة')
-    else{toast('تمت إضافة الطلب ✅');setSel('');setQ(1);setTab(1);load()}
+    else{toast('تمت إضافة الطلب ✅');playTea();setSel('');setQ(1);setTab(1);load()}
   }
   const it=items.find(i=>i.id===sel)
   return <Shell title={`أهلاً ${p.full_name}`}>
