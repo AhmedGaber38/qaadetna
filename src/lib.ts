@@ -1,6 +1,20 @@
 import {createClient} from '@supabase/supabase-js'
 import {useEffect,useRef} from 'react'
-export const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY)
+export type Rec={n:string;ms:number;ok:boolean}
+const recs:Rec[]=[]
+const subs=new Set<()=>void>()
+export const getRecs=()=>recs
+export const onRecs=(f:()=>void)=>{subs.add(f);return()=>{subs.delete(f)}}
+const label=(u:string,m:string)=>{try{return m+' '+new URL(u).pathname.replace('/rest/v1/','').replace('/auth/v1/','auth/')}catch(e){return m}}
+const tfetch=async(input:any,init?:any)=>{
+  const t=performance.now()
+  const url=typeof input==='string'?input:(input&&input.url)||String(input)
+  const m=(init&&init.method)||(input&&input.method)||'GET'
+  let ok=true
+  try{const r=await fetch(input,init);ok=r.ok;return r}catch(e){ok=false;throw e}
+  finally{recs.unshift({n:label(url,m),ms:Math.round(performance.now()-t),ok});if(recs.length>14)recs.pop();subs.forEach(f=>f())}
+}
+export const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY,{global:{fetch:tfetch as any}})
 export type Profile={id:string;full_name:string;username:string;role:string;status:string;created_at:string}
 export type Item={id:string;name:string;price:number;is_active:boolean;is_archived:boolean}
 export type Gath={id:string;title:string;status:string;started_at:string;closed_at:string|null}
