@@ -10,7 +10,7 @@ export const setSoundOn=(v:boolean)=>{
   if(!v&&a){try{a.pause();a.currentTime=0}catch(e){}playing=false}
 }
 
-function el(){
+function el(src='/tea-stir.mp3'){
   if(!a){
     a=new Audio()
     a.preload='none'
@@ -18,14 +18,17 @@ function el(){
     const stop=()=>{playing=false}
     a.addEventListener('ended',stop);a.addEventListener('pause',stop);a.addEventListener('error',stop)
   }
+  if(a.getAttribute('src')!==src){a.pause();a.src=src;playing=false;unlocked=false}
   return a
 }
 
 // Plays once. Ignored if sound is off or it is still playing (no overlap). Never throws.
-export function playTea(){
+export function playTea(){playItem('/tea-stir.mp3')}
+
+export function playItem(url?:string|null){
   if(!soundOn()||playing)return
   try{
-    const x=el()
+    const x=el(url||'/tea-stir.mp3')
     playing=true
     x.muted=false
     try{x.currentTime=0}catch(e){}

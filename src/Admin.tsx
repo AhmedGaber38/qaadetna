@@ -2,10 +2,11 @@ import {useEffect,useRef,useState} from 'react'
 import {Pencil,Trash2} from 'lucide-react'
 import {sb,Profile,Item,Gath,Order,egp,dt,toast,useRealtime} from './lib'
 import {Shell,btn,btn2,inp,card} from './ui'
+import MenuItemEditor from './MenuItemEditor'
 
 export default function Admin(){
   const [tab,setTab]=useState('orders'),[users,setUsers]=useState<Profile[]>([]),[items,setItems]=useState<Item[]>([]),[gs,setGs]=useState<Gath[]>([]),[orders,setOrders]=useState<Order[]>([])
-  const [gid,setGid]=useState(''),ref=useRef(''),[search,setSearch]=useState(''),[day,setDay]=useState(''),[ni,setNi]=useState({name:'',price:''}),[title,setTitle]=useState('')
+  const [gid,setGid]=useState(''),ref=useRef(''),[search,setSearch]=useState(''),[day,setDay]=useState(''),[editing,setEditing]=useState<Item|null>(null),[title,setTitle]=useState('')
   const load=async()=>{
     const [u,i,g]=await Promise.all([sb.from('profiles').select('*').order('created_at',{ascending:false}),sb.from('menu_items').select('*').order('created_at'),sb.from('gatherings').select('*').order('started_at',{ascending:false})])
     setUsers(u.data||[]);setItems(i.data||[]);setGs(g.data||[])
@@ -47,10 +48,9 @@ export default function Admin(){
         {u.status==='suspended'&&<button className={btn2} onClick={()=>setStatus(u.id,'approved')}>إعادة تفعيل</button>}
         <button className={btn2} onClick={()=>{setSearch(u.username);setTab('orders')}}>طلباته</button></div>}</div>)}
     {tab==='menu'&&<>
-      <div className={card+' flex gap-2'}><input className={inp} placeholder="الصنف" value={ni.name} onChange={e=>setNi({...ni,name:e.target.value})}/><input className={inp+' !w-24'} type="number" placeholder="السعر" value={ni.price} onChange={e=>setNi({...ni,price:e.target.value})}/>
-        <button className={btn} onClick={async()=>{if(!ni.name.trim()||ni.price===''||!(Number(ni.price)>=0))return;const {error}=await sb.from('menu_items').insert({name:ni.name.trim(),price:Number(ni.price)});if(!error)setNi({name:'',price:''});res(error,'تمت الإضافة')}}>+</button></div>
-      {items.filter(i=>!i.is_archived).map(i=><div key={i.id} className={card+' flex items-center justify-between gap-2'}><div><b>{i.name}</b><div className="text-sm text-stone-500">{egp(i.price)}</div></div>
-        <div className="flex gap-1"><button className={btn2} onClick={async()=>{const n=prompt('الاسم',i.name),p=Number(prompt('السعر',String(i.price)));if(!n||isNaN(p)||p<0)return;const {error}=await sb.from('menu_items').update({name:n,price:p}).eq('id',i.id);res(error,'تم التعديل')}}><Pencil size={16}/></button>
+      <MenuItemEditor key={editing?.id||'new'} item={editing||undefined} onSaved={()=>{setEditing(null);load()}} onCancel={editing?()=>setEditing(null):undefined}/>
+      {items.filter(i=>!i.is_archived).map(i=><div key={i.id} className={card+' flex items-center justify-between gap-2'}><div className="flex min-w-0 items-center gap-3">{i.image_url&&<img src={i.image_url} alt={i.name} loading="lazy" className="h-14 w-14 rounded-lg object-cover"/>}<div><b>{i.name}</b><div className="text-sm text-stone-500">{egp(i.price)}</div>{i.audio_url&&<span className="text-xs text-amber-800">صوت MP3 مضاف</span>}</div></div>
+        <div className="flex gap-1"><button className={btn2} aria-label={`تعديل ${i.name}`} onClick={()=>{setEditing(i)}}><Pencil size={16}/></button>
         <button className={btn2} onClick={async()=>{const {error}=await sb.from('menu_items').update({is_active:!i.is_active}).eq('id',i.id);res(error,'تم')}}>{i.is_active?'إيقاف':'تفعيل'}</button>
         <button className={btn2} onClick={async()=>{if(!confirm('حذف الصنف؟ (يُؤرشف إن كان له طلبات سابقة)'))return;const {error}=await sb.rpc('delete_or_archive_item',{p_id:i.id});res(error,'تم')}}><Trash2 size={16}/></button></div></div>)}
     </>}

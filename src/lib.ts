@@ -16,7 +16,7 @@ const tfetch=async(input:any,init?:any)=>{
 }
 export const sb=createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY,{global:{fetch:tfetch as any}})
 export type Profile={id:string;full_name:string;username:string;role:string;status:string;created_at:string}
-export type Item={id:string;name:string;price:number;is_active:boolean;is_archived:boolean}
+export type Item={id:string;name:string;price:number;is_active:boolean;is_archived:boolean;image_url?:string|null;audio_url?:string|null}
 export type Gath={id:string;title:string;status:string;started_at:string;closed_at:string|null}
 export type Order={id:string;user_id:string;gathering_id:string;item_name_snapshot:string;unit_price_snapshot:number;quantity:number;total_price:number;created_at:string}
 export const egp=(n:number)=>new Intl.NumberFormat('ar-EG',{maximumFractionDigits:2}).format(n)+' جنيه'
