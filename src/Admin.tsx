@@ -5,6 +5,7 @@ import {Shell,btn,btn2,inp,card} from './ui'
 import MenuItemEditor from './MenuItemEditor'
 import User from './User'
 import Invoices from './Invoices'
+import GatheringReceipt from './GatheringReceipt'
 import MemberManagement from './MemberManagement'
 import AdminNotifications from './AdminNotifications'
 import {sumOrders,received,dateKey} from './orders'
@@ -40,11 +41,15 @@ export default function Admin({p}:{p:Profile}){
   }
   const editOrder=(o:Order)=>{setEdit(o);setQty(String(o.quantity));setPrice(String(o.unit_price_snapshot))}
   const delOrder=(o:Order)=>{if(confirm('حذف الطلب نهائيًا؟ سيتغير إجمالي فاتورة العضو.'))perform('qa_admin_delete_order',{p_order:o.id},'تم حذف الطلب')}
-  const tabs:[string,string][]=[['orders','الفواتير'],['self','اطلب لنفسي'],['users','الأعضاء'],['menu','المنيو'],['gath','القعدات']]
+  const tabs:[string,string][]=[['orders','الفواتير'],['receipt','الريسيت'],['self','اطلب لنفسي'],['users','الأعضاء'],['menu','المنيو'],['gath','القعدات']]
   return <Shell title="لوحة المدير">
     <AdminNotifications userId={p.id}/>
     {loadError&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{loadError}<button className={btn2+' mr-2'} onClick={load}>إعادة المحاولة</button></p>}
-    <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={'rounded-xl py-3 text-sm font-bold '+(tab===k?'bg-amber-900 text-white':'bg-white')}>{l}{k==='users'&&users.some(u=>u.status==='pending')?' •':''}</button>)}</div>
+    <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={'rounded-xl py-3 text-sm font-bold '+(tab===k?'bg-amber-900 text-white':'bg-white')}>{l}{k==='users'&&users.some(u=>u.status==='pending')?' •':''}</button>)}</div>
+    {tab==='receipt'&&<>
+      <select className={inp} value={gid} onChange={e=>pick(e.target.value)}>{gs.map(g=><option key={g.id} value={g.id}>{g.title} — {g.status==='active'?'نشطة':'مغلقة'}</option>)}</select>
+      <GatheringReceipt title={gs.find(g=>g.id===gid)?.title||''} orders={orders}/>
+    </>}
     {tab==='orders'&&<>
       <select className={inp} value={gid} onChange={e=>pick(e.target.value)}>{gs.map(g=><option key={g.id} value={g.id}>{g.title} — {g.status==='active'?'نشطة':'مغلقة'}</option>)}</select>
       <div className="rounded-2xl bg-amber-800 p-4 text-center text-white"><div className="text-sm">إجمالي المستلم المستحق للقعدة</div><div className="text-3xl font-bold">{egp(grand)}</div><p className="mt-2 text-sm">قيد التحضير: {egp(sumOrders(orders.filter(o=>!received(o)),false))} (غير محتسب)</p></div>

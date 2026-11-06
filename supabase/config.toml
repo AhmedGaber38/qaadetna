@@ -2,3 +2,7 @@
 # Authorization is performed explicitly using Auth.getUser(), including current
 # profile role/status, inside the handler. Supports Supabase signing-key JWTs.
 verify_jwt = false
+
+[functions.reset-member-password]
+# Same explicit Auth.getUser() + approved-admin check inside the handler.
+verify_jwt = false

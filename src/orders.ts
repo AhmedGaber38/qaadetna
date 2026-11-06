@@ -20,3 +20,18 @@ export function dateKey(value:string){
   return `${get('year')}-${get('month')}-${get('day')}`
 }
 export const formatDate=(value:string)=>new Intl.DateTimeFormat('ar-EG',{timeZone:APP_TIME_ZONE,dateStyle:'medium',timeStyle:'short'}).format(new Date(value))
+
+// Receipt of a whole gathering: every ordered drink (any delivery state), grouped
+// by the name and unit price captured at order time, with exact cent arithmetic.
+export function drinkSummary(orders:Order[]){
+  const rows=new Map<string,{name:string;price:number;qty:number;cents:number}>()
+  for(const o of orders){
+    const price=Number(o.unit_price_snapshot),key=o.item_name_snapshot+'|'+price
+    const row=rows.get(key)||{name:o.item_name_snapshot,price,qty:0,cents:0}
+    row.qty+=o.quantity;row.cents+=Math.round(orderTotal(o)*100)
+    rows.set(key,row)
+  }
+  const list=[...rows.values()].map(r=>({name:r.name,price:r.price,qty:r.qty,total:r.cents/100}))
+    .sort((a,b)=>b.qty-a.qty||a.name.localeCompare(b.name,'ar'))
+  return {rows:list,totalQty:list.reduce((n,r)=>n+r.qty,0),total:sumOrders(orders,false),receivedTotal:sumOrders(orders),pendingTotal:sumOrders(orders.filter(o=>!received(o)),false)}
+}
