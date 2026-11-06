@@ -1,0 +1,4 @@
+[functions.delete-member]
+# Authorization is performed explicitly using Auth.getUser(), including current
+# profile role/status, inside the handler. Supports Supabase signing-key JWTs.
+verify_jwt = false

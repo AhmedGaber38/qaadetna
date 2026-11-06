@@ -4,6 +4,7 @@ import {Shell,DebugPanel,SoundToggle,btn,inp,card} from './ui'
 import {armFirstInteraction} from './sound'
 import User from './User'
 import Admin from './Admin'
+import OrderReminders from './OrderReminders'
 
 function Auth(){
   const [reg,setReg]=useState(false),[f,setF]=useState({name:'',user:'',pass:''}),[busy,setBusy]=useState(false),[err,setErr]=useState('')
@@ -61,6 +62,6 @@ export default function App(){
   else if(!p)body=<Auth/>
   else if(p.status==='pending')body=<Shell title="قعدتنا"><div className={card+' text-center'}><p className="text-xl font-bold">طلبك قيد المراجعة ⏳</p><p className="mt-2 text-stone-500">سيتم فتح حسابك بعد موافقة المدير.</p></div></Shell>
   else if(p.status!=='approved')body=<Shell title="قعدتنا"><div className={card+' text-center'}>{p.status==='rejected'?'تم رفض طلب التسجيل.':'تم إيقاف حسابك. تواصل مع المدير.'}</div></Shell>
-  else body=p.role==='admin'?<Admin/>:<User p={p}/>
-  return <>{msg&&<div className="fixed inset-x-4 top-16 z-50 rounded-xl bg-stone-900 p-3 text-center text-white shadow-lg">{msg}</div>}{body}<DebugPanel/></>
+  else body=p.role==='admin'?<Admin p={p}/>:<User p={p}/>
+  return <>{msg&&<div className="fixed inset-x-4 top-16 z-50 rounded-xl bg-stone-900 p-3 text-center text-white shadow-lg">{msg}</div>}{body}{p?.status==='approved'&&<OrderReminders key={p.id} userId={p.id}/>}<DebugPanel/></>
 }
