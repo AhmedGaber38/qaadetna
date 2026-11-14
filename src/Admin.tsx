@@ -4,16 +4,21 @@ import {sb,Profile,Item,Gath,Order,egp,dt,toast,useRealtime} from './lib'
 import {Shell,btn,btn2,inp,card} from './ui'
 import MenuItemEditor from './MenuItemEditor'
 import User from './User'
-import Invoices from './Invoices'
+import AccountsPanel from './AccountsPanel'
+import WalletPanel from './WalletPanel'
+import ReceiptView from './ReceiptView'
+import {Account,Custody,LedgerEntry,Payment,ReceiptData,accountTotal,receiptFromOrders,sessionStats} from './accounts'
 import GatheringReceipt from './GatheringReceipt'
 import MemberManagement from './MemberManagement'
 import AdminNotifications from './AdminNotifications'
-import {sumOrders,received,dateKey} from './orders'
+import {sumOrders,received} from './orders'
 import {allRows} from './data'
 
 export default function Admin({p}:{p:Profile}){
   const [tab,setTab]=useState('orders'),[users,setUsers]=useState<Profile[]>([]),[items,setItems]=useState<Item[]>([]),[gs,setGs]=useState<Gath[]>([]),[orders,setOrders]=useState<Order[]>([])
-  const [gid,setGid]=useState(''),ref=useRef(''),[search,setSearch]=useState(''),[day,setDay]=useState(''),[editing,setEditing]=useState<Item|null>(null),[title,setTitle]=useState(''),[loadError,setLoadError]=useState(''),[busy,setBusy]=useState(false),[edit,setEdit]=useState<Order|null>(null),[qty,setQty]=useState('1'),[price,setPrice]=useState('0')
+  const [gid,setGid]=useState(''),ref=useRef(''),[editing,setEditing]=useState<Item|null>(null),[title,setTitle]=useState(''),[loadError,setLoadError]=useState(''),[busy,setBusy]=useState(false),[edit,setEdit]=useState<Order|null>(null),[qty,setQty]=useState('1'),[price,setPrice]=useState('0')
+  const [accounts,setAccounts]=useState<Account[]>([]),[payments,setPayments]=useState<Payment[]>([]),[ledger,setLedger]=useState<LedgerEntry[]>([]),[custody,setCustody]=useState<Custody[]>([])
+  const [viewing,setViewing]=useState<{data:ReceiptData;status:'open'|'pending'|'paid'}|null>(null),[add,setAdd]=useState<{user:string;item:string;qty:string}|null>(null)
   const version=useRef(0),lock=useRef(false),alive=useRef(true)
   const load=async()=>{
     const request=++version.current
@@ -23,39 +28,74 @@ export default function Admin({p}:{p:Profile}){
       if(u.error||i.error||g.error)throw new Error('Load failed')
       setUsers(u.data||[]);setItems(i.data||[]);setGs(g.data||[])
       if(!ref.current||!g.data?.some(x=>x.id===ref.current)){ref.current=(g.data?.find(x=>x.status==='active')||g.data?.[0])?.id||'';setGid(ref.current)}
-      if(ref.current){const {data,error}=await allRows<Order>(()=>sb.from('orders').select('*').eq('gathering_id',ref.current).order('created_at',{ascending:false}).order('id'));if(request!==version.current||!alive.current)return;if(error)throw error;setOrders(data||[])}else setOrders([])
+      if(ref.current){
+        const gid0=ref.current
+        const [o,ac,pa,le,cu]=await Promise.all([
+          allRows<Order>(()=>sb.from('orders').select('*').eq('gathering_id',gid0).order('created_at',{ascending:false}).order('id')),
+          allRows<Account>(()=>sb.from('member_accounts').select('*').eq('gathering_id',gid0).order('opened_at').order('id')),
+          allRows<Payment>(()=>sb.from('account_payments').select('*').eq('gathering_id',gid0).order('requested_at',{ascending:false}).order('id')),
+          allRows<LedgerEntry>(()=>sb.from('wallet_ledger').select('*').eq('gathering_id',gid0).order('created_at',{ascending:false}).order('id')),
+          allRows<Custody>(()=>sb.from('wallet_custody').select('*').eq('gathering_id',gid0).order('handed_at',{ascending:false}).order('id'))])
+        if(request!==version.current||!alive.current)return
+        if(o.error)throw o.error
+        setOrders(o.data||[])
+        // Accounts/wallet failures must not hide orders; they keep their last known state and retry on the next refresh.
+        if(!ac.error)setAccounts(ac.data||[]);if(!pa.error)setPayments(pa.data||[]);if(!le.error)setLedger(le.data||[]);if(!cu.error)setCustody(cu.data||[])
+      }else{setOrders([]);setAccounts([]);setPayments([]);setLedger([]);setCustody([])}
       setLoadError('')
     }catch{if(alive.current&&request===version.current)setLoadError('تعذر تحديث بيانات الإدارة. البيانات المعروضة قد تكون قديمة.')}
   }
   useEffect(()=>{alive.current=true;load();const timer=setInterval(load,30000);return()=>{alive.current=false;version.current++;clearInterval(timer)}},[])
-  useRealtime('orders',load);useRealtime('profiles',load);useRealtime('menu_items',load);useRealtime('gatherings',load)
+  useRealtime('orders',load);useRealtime('profiles',load);useRealtime('menu_items',load);useRealtime('gatherings',load);useRealtime('member_accounts',load);useRealtime('account_payments',load);useRealtime('wallet_ledger',load);useRealtime('wallet_custody',load)
   const pick=(id:string)=>{ref.current=id;setGid(id);load()}
   const U=(id:string)=>users.find(u=>u.id===id)
   const res=(error:any,ok:string)=>{toast(error?'حدث خطأ، حاول مرة أخرى':ok);load()}
-  const shown=orders.filter(o=>{const u=U(o.user_id);return (!search||((u?.username||'')+' '+(u?.full_name||'')).toLowerCase().includes(search.toLowerCase()))&&(!day||dateKey(o.created_at)===day)})
   const grand=sumOrders(orders)
   const active=gs.find(g=>g.status==='active')
+  const friendly=(m:string)=>/changed after/i.test(m)?'الحساب اتغيّر بعد طلب الدفع. ألغِ الطلب وأعد المحاولة'
+    :/receipt|awaiting/i.test(m)?'فيه مشروبات قيد التحضير: سجّل استلامها أولًا'
+    :/already paid/i.test(m)?'الحساب مدفوع بالفعل، والتخفيض بعد الدفع مسموح فقط'
+    :/exceeds wallet/i.test(m)?'المبلغ أكبر من رصيد المحفظة'
+    :/already pending/i.test(m)?'فيه نقل مسؤولية معلّق بالفعل'
+    :'تعذر تنفيذ العملية، حاول مرة أخرى'
   const perform=async(name:string,args:Record<string,unknown>,message:string)=>{
     if(lock.current)return false;lock.current=true;setBusy(true)
-    try{const {error}=await sb.rpc(name,args);if(error)throw error;toast(message);await load();return true}catch{toast('تعذر تنفيذ العملية، حاول مرة أخرى');return false}finally{lock.current=false;setBusy(false)}
+    try{const {error}=await sb.rpc(name,args);if(error)throw error;toast(message);await load();return true}catch(e:any){toast(friendly(String(e?.message||'')));return false}finally{lock.current=false;setBusy(false)}
   }
   const editOrder=(o:Order)=>{setEdit(o);setQty(String(o.quantity));setPrice(String(o.unit_price_snapshot))}
   const delOrder=(o:Order)=>{if(confirm('حذف الطلب نهائيًا؟ سيتغير إجمالي فاتورة العضو.'))perform('qa_admin_delete_order',{p_order:o.id},'تم حذف الطلب')}
-  const tabs:[string,string][]=[['orders','الفواتير'],['receipt','الريسيت'],['self','اطلب لنفسي'],['users','الأعضاء'],['menu','المنيو'],['gath','القعدات']]
+  const confirmPayment=(pay:Payment)=>{if(confirm(`تأكيد إنك استلمت ${egp(pay.amount)} فعلًا من ${pay.member_name}؟`))perform('qa_confirm_payment',{p_payment:pay.id},'تم تأكيد الدفع وإضافته للمحفظة')}
+  const recordPayment=(a:Account)=>{if(confirm(`تسجيل استلام ${egp(accountTotal(orders,a))} (الحساب كاملًا) من ${U(a.user_id)?.full_name||'العضو'}؟`))perform('qa_admin_record_payment',{p_account:a.id},'تم تسجيل الدفع بالكامل')}
+  const cancelPayment=(a:Account)=>perform('qa_cancel_payment',{p_account:a.id},'تم إلغاء طلب الدفع')
+  const markReceived=(o:Order)=>perform('qa_admin_mark_received',{p_order:o.id},'تم تسجيل الاستلام')
+  const showReceipt=(a:Account)=>{
+    const pay=payments.find(x=>x.account_id===a.id&&x.status==='confirmed'),g=gs.find(x=>x.id===a.gathering_id)||{title:'قعدة',started_at:a.opened_at}
+    setViewing(pay?.receipt?{data:pay.receipt,status:'paid'}:{data:receiptFromOrders(a,orders,U(a.user_id)?.full_name||'عضو',g),status:a.status})
+  }
+  const stats=sessionStats(orders,accounts,ledger)
+  const picker=<select className={inp} value={gid} onChange={e=>pick(e.target.value)}>{gs.map(g=><option key={g.id} value={g.id}>{g.title} — {g.status==='active'?'نشطة':'مغلقة'}</option>)}</select>
+  const tabs:[string,string][]=[['orders','الفواتير'],['wallet','المحفظة'],['receipt','الريسيت'],['self','اطلب لنفسي'],['users','الأعضاء'],['menu','المنيو'],['gath','القعدات']]
   return <Shell title="لوحة المدير">
     <AdminNotifications userId={p.id}/>
     {loadError&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{loadError}<button className={btn2+' mr-2'} onClick={load}>إعادة المحاولة</button></p>}
-    <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={'rounded-xl py-3 text-sm font-bold '+(tab===k?'bg-amber-900 text-white':'bg-white')}>{l}{k==='users'&&users.some(u=>u.status==='pending')?' •':''}</button>)}</div>
+    <div className="flex gap-1 overflow-x-auto pb-1">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={'shrink-0 rounded-xl px-4 py-3 text-sm font-bold '+(tab===k?'bg-amber-900 text-white':'bg-white')}>{l}{k==='users'&&users.some(u=>u.status==='pending')?' •':''}</button>)}</div>
     {tab==='receipt'&&<>
-      <select className={inp} value={gid} onChange={e=>pick(e.target.value)}>{gs.map(g=><option key={g.id} value={g.id}>{g.title} — {g.status==='active'?'نشطة':'مغلقة'}</option>)}</select>
+      {picker}
       <GatheringReceipt title={gs.find(g=>g.id===gid)?.title||''} orders={orders}/>
     </>}
     {tab==='orders'&&<>
-      <select className={inp} value={gid} onChange={e=>pick(e.target.value)}>{gs.map(g=><option key={g.id} value={g.id}>{g.title} — {g.status==='active'?'نشطة':'مغلقة'}</option>)}</select>
-      <div className="rounded-2xl bg-amber-800 p-4 text-center text-white"><div className="text-sm">إجمالي المستلم المستحق للقعدة</div><div className="text-3xl font-bold">{egp(grand)}</div><p className="mt-2 text-sm">قيد التحضير: {egp(sumOrders(orders.filter(o=>!received(o)),false))} (غير محتسب)</p></div>
-      <div className="grid grid-cols-2 gap-2"><label className="text-sm">بحث بالاسم<input className={inp} placeholder="بحث بالاسم" value={search} onChange={e=>setSearch(e.target.value)}/></label><label className="text-sm">تاريخ الطلب (القاهرة)<input className={inp} type="date" value={day} onChange={e=>setDay(e.target.value)}/></label></div>
-      <p className="text-sm text-stone-500">افتح اسم العضو لعرض تفاصيل فاتورته. المستحق للطلبات المعروضة: {egp(sumOrders(shown))}</p>
-      <Invoices orders={shown} users={users} onEdit={editOrder} onDelete={delOrder} busy={busy}/>
+      {picker}
+      <div className="rounded-2xl bg-amber-800 p-4 text-center text-white"><div className="text-sm">إجمالي المشاريب المستلمة في القعدة</div><div className="text-3xl font-bold">{egp(grand)}</div><p className="mt-2 text-sm">قيد التحضير: {egp(sumOrders(orders.filter(o=>!received(o)),false))} (غير محتسب)</p></div>
+      <button className={btn+' w-full'} disabled={busy||!active} onClick={()=>setAdd({user:'',item:'',qty:'1'})}>إضافة مشروب لحساب عضو</button>
+      <AccountsPanel accounts={accounts} payments={payments} orders={orders} users={users} stats={stats} busy={busy} onReceipt={showReceipt} onConfirm={confirmPayment} onRecord={recordPayment} onCancel={cancelPayment} onEdit={editOrder} onDelete={delOrder} onReceived={markReceived}/>
+    </>}
+    {tab==='wallet'&&<>
+      {picker}
+      <WalletPanel title={gs.find(g=>g.id===gid)?.title||''} ledger={ledger} custody={custody} users={users} busy={busy}
+        onExpense={(d,n)=>gid?perform('qa_record_expense',{p_gathering:gid,p_description:d,p_amount:n},'تم تسجيل المصروف وخصمه من المحفظة'):Promise.resolve(false)}
+        onCorrect={(n,r)=>gid?perform('qa_wallet_correct',{p_gathering:gid,p_amount:n,p_reason:r},'تم تسجيل التصحيح'):Promise.resolve(false)}
+        onStartCustody={(t,n)=>gid?perform('qa_start_custody',{p_gathering:gid,p_to:t,p_amount:n},'تم تسجيل التسليم، بانتظار تأكيد الاستلام'):Promise.resolve(false)}
+        onConfirmCustody={id=>{perform('qa_confirm_custody',{p_id:id},'تم تأكيد الاستلام')}} onCancelCustody={id=>{perform('qa_cancel_custody',{p_id:id},'تم إلغاء النقل')}}/>
     </>}
     {tab==='self'&&<User p={p} embedded onOrdered={load}/>}
     {tab==='users'&&<MemberManagement users={users} onChanged={load}/>}
@@ -67,9 +107,17 @@ export default function Admin({p}:{p:Profile}){
         <button className={btn2} onClick={async()=>{if(!confirm('أرشفة الصنف وإخفاؤه من المنيو؟ ستظل الطلبات السابقة محفوظة.'))return;const {error}=await sb.rpc('qa_delete_or_archive_item',{p_id:i.id});res(error,'تم')}}><Trash2 size={16}/></button></div></div>)}
     </>}
     {tab==='gath'&&<>
-      <div className={card+' space-y-2'}>{active?<><p>القعدة النشطة: <b>{active.title}</b></p><button className={btn+' w-full'} disabled={busy} onClick={()=>{if(confirm('إغلاق القعدة الحالية؟ الطلبات قيد التحضير تظل غير مستحقة حتى يؤكد صاحبها الاستلام.'))perform('qa_close_gathering',{},'تم إغلاق القعدة')}}>إغلاق القعدة</button></>:<><input className={inp} placeholder="اسم القعدة (اختياري)" value={title} onChange={e=>setTitle(e.target.value)}/><button className={btn+' w-full'} disabled={busy} onClick={async()=>{if(await perform('qa_start_gathering',{p_title:title},'بدأت قعدة جديدة')){ref.current='';setTitle('');load()}}}>بدء قعدة جديدة</button></>}</div>
+      <div className={card+' space-y-2'}>{active?<><p>القعدة النشطة: <b>{active.title}</b></p><button className={btn+' w-full'} disabled={busy} onClick={()=>{if(confirm(`إغلاق القعدة الحالية؟${accounts.filter(a=>a.status!=='paid').length?` فيه ${accounts.filter(a=>a.status!=='paid').length} حساب لم يُسدَّد، وهيفضل متاح للدفع بعد الإغلاق.`:''} الطلبات قيد التحضير تظل غير مستحقة حتى يؤكد صاحبها الاستلام.`))perform('qa_close_gathering',{},'تم إغلاق القعدة')}}>إغلاق القعدة</button></>:<><input className={inp} placeholder="اسم القعدة (اختياري)" value={title} onChange={e=>setTitle(e.target.value)}/><button className={btn+' w-full'} disabled={busy} onClick={async()=>{if(await perform('qa_start_gathering',{p_title:title},'بدأت قعدة جديدة')){ref.current='';setTitle('');load()}}}>بدء قعدة جديدة</button></>}</div>
       {gs.map(g=><div key={g.id} className={card+' flex items-center justify-between'}><div><b>{g.title}</b><div className="text-xs text-stone-500">{dt(g.started_at)}{g.closed_at?' → '+dt(g.closed_at):''}</div></div><button className={btn2} onClick={()=>{pick(g.id);setTab('orders')}}>عرض</button></div>)}
     </>}
+    {add&&<div className="fixed inset-0 z-30 flex items-center justify-center bg-black/45 p-4"><form role="dialog" aria-modal="true" aria-label="إضافة مشروب لعضو" className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5" onSubmit={async e=>{e.preventDefault();if(await perform('qa_admin_add_order',{p_user:add.user,p_item:add.item,p_qty:Number(add.qty),p_received:true},'تمت إضافة المشروب على حساب العضو'))setAdd(null)}}>
+      <h2 className="font-bold">إضافة مشروب لحساب عضو</h2><p className="text-xs text-stone-500">المشروب يُحسب على العضو نفسه، ويظهر اسمك كمن سجّله.</p>
+      <select className={inp} required value={add.user} disabled={busy} onChange={e=>setAdd({...add,user:e.target.value})}><option value="">اختار العضو</option>{users.filter(u=>u.status==='approved').map(u=><option key={u.id} value={u.id}>{u.full_name}</option>)}</select>
+      <select className={inp} required value={add.item} disabled={busy} onChange={e=>setAdd({...add,item:e.target.value})}><option value="">اختار المشروب</option>{items.filter(i=>i.is_active&&!i.is_archived).map(i=><option key={i.id} value={i.id}>{i.name} — {egp(i.price)}</option>)}</select>
+      <label className="block text-sm">الكمية<input className={inp} type="number" min="1" max="50" step="1" required value={add.qty} disabled={busy} onChange={e=>setAdd({...add,qty:e.target.value})}/></label>
+      <div className="flex gap-2"><button className={btn} disabled={busy||!add.user||!add.item}>إضافة</button><button type="button" className={btn2} disabled={busy} onClick={()=>setAdd(null)}>إلغاء</button></div>
+    </form></div>}
+    {viewing&&<ReceiptView data={viewing.data} status={viewing.status} onClose={()=>setViewing(null)}/>}
     {edit&&<div className="fixed inset-0 z-30 flex items-center justify-center bg-black/45 p-4"><form role="dialog" aria-modal="true" aria-label="تعديل الطلب" className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5" onSubmit={async e=>{e.preventDefault();if(await perform('qa_admin_update_order',{p_order:edit.id,p_qty:Number(qty),p_price:Number(price)},'تم تعديل الطلب'))setEdit(null)}}>
       <h2 className="font-bold">تعديل {edit.item_name_snapshot}</h2><p className="text-xs text-stone-500">هذا تعديل صريح للفاتورة؛ تغيير سعر المنيو لا يعدل الطلبات القديمة.</p>
       <label className="block text-sm">الكمية<input className={inp} type="number" min="1" max="50" step="1" required value={qty} disabled={busy} onChange={e=>setQty(e.target.value)}/></label><label className="block text-sm">سعر الوحدة وقت الطلب<input className={inp} type="number" min="0" step="0.01" required value={price} disabled={busy} onChange={e=>setPrice(e.target.value)}/></label>

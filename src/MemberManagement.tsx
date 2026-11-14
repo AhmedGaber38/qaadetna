@@ -69,7 +69,7 @@ export default function MemberManagement({users,onChanged}:{users:Profile[];onCh
     </section></div>}
     {target&&<div className="fixed inset-0 z-30 flex items-center justify-center overflow-auto bg-black/45 p-4"><section role="dialog" aria-modal="true" aria-labelledby="delete-member-title" className="w-full max-w-md space-y-4 rounded-2xl bg-white p-5">
       <h2 id="delete-member-title" className="text-xl font-bold text-red-700">حذف {target.full_name} نهائيًا؟</h2>
-      <p className="text-sm">سيُحذف حساب الدخول وملف العضو وجميع طلباته في كل القعدات وإشعاراتها. ستتغير إجماليات الفواتير القديمة المرتبطة به. لن تُحذف القعدات أو حسابات الأعضاء الآخرين. لا يمكن التراجع.</p>
+      <p className="text-sm">سيُحذف حساب الدخول وملف العضو وجميع طلباته في كل القعدات وإشعاراتها. سجل المدفوعات والمحفظة يظل محفوظًا. ستتغير إجماليات الفواتير القديمة المرتبطة به. لن تُحذف القعدات أو حسابات الأعضاء الآخرين. لا يمكن التراجع.</p>
       <label className="block text-sm">للتأكيد اكتب اسم المستخدم: <b dir="ltr">{target.username}</b><input autoFocus className={inp} dir="ltr" autoComplete="off" value={confirmation} disabled={busy} onChange={e=>setConfirmation(e.target.value)}/></label>
       {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="flex gap-2"><button className={btn+' !bg-red-700'} disabled={busy||confirmation!==target.username} onClick={remove}>{busy?'جاري الحذف...':'تأكيد الحذف النهائي'}</button><button className={btn2} disabled={busy} onClick={()=>{setTarget(null);setError('')}}>إلغاء</button></div>
