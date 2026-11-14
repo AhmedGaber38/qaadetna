@@ -64,6 +64,21 @@ export default function Admin({p}:{p:Profile}){
   }
   const editOrder=(o:Order)=>{setEdit(o);setQty(String(o.quantity));setPrice(String(o.unit_price_snapshot))}
   const delOrder=(o:Order)=>{if(confirm('حذف الطلب نهائيًا؟ سيتغير إجمالي فاتورة العضو.'))perform('qa_admin_delete_order',{p_order:o.id},'تم حذف الطلب')}
+  const closeGathering=async()=>{
+    if(!active||lock.current)return
+    // Count from the database for the ACTIVE gathering (the screen may be showing another one), so the warning is accurate.
+    let unpaid=0,preparing=0
+    try{
+      const [a,o]=await Promise.all([
+        sb.from('member_accounts').select('id',{count:'exact',head:true}).eq('gathering_id',active.id).neq('status','paid'),
+        sb.from('orders').select('id',{count:'exact',head:true}).eq('gathering_id',active.id).eq('delivery_status','pending')])
+      unpaid=a.count||0;preparing=o.count||0
+    }catch{/* fall back to the plain confirmation */}
+    const lines=[`إغلاق القعدة «${active.title}»؟`]
+    if(unpaid)lines.push(`فيه ${unpaid} حساب لم يُسدَّد، وهيفضل متاح للدفع بعد الإغلاق.`)
+    if(preparing)lines.push(`فيه ${preparing} مشروب قيد التحضير، ومش هيتحسب على أصحابه قبل ما يأكدوا الاستلام.`)
+    if(confirm(lines.join('\n')))perform('qa_close_gathering',{},'تم إغلاق القعدة')
+  }
   const confirmPayment=(pay:Payment)=>{if(confirm(`تأكيد إنك استلمت ${egp(pay.amount)} فعلًا من ${pay.member_name}؟`))perform('qa_confirm_payment',{p_payment:pay.id},'تم تأكيد الدفع وإضافته للمحفظة')}
   const recordPayment=(a:Account)=>{if(confirm(`تسجيل استلام ${egp(accountTotal(orders,a))} (الحساب كاملًا) من ${U(a.user_id)?.full_name||'العضو'}؟`))perform('qa_admin_record_payment',{p_account:a.id},'تم تسجيل الدفع بالكامل')}
   const cancelPayment=(a:Account)=>perform('qa_cancel_payment',{p_account:a.id},'تم إلغاء طلب الدفع')
@@ -107,7 +122,7 @@ export default function Admin({p}:{p:Profile}){
         <button className={btn2} onClick={async()=>{if(!confirm('أرشفة الصنف وإخفاؤه من المنيو؟ ستظل الطلبات السابقة محفوظة.'))return;const {error}=await sb.rpc('qa_delete_or_archive_item',{p_id:i.id});res(error,'تم')}}><Trash2 size={16}/></button></div></div>)}
     </>}
     {tab==='gath'&&<>
-      <div className={card+' space-y-2'}>{active?<><p>القعدة النشطة: <b>{active.title}</b></p><button className={btn+' w-full'} disabled={busy} onClick={()=>{if(confirm(`إغلاق القعدة الحالية؟${accounts.filter(a=>a.status!=='paid').length?` فيه ${accounts.filter(a=>a.status!=='paid').length} حساب لم يُسدَّد، وهيفضل متاح للدفع بعد الإغلاق.`:''} الطلبات قيد التحضير تظل غير مستحقة حتى يؤكد صاحبها الاستلام.`))perform('qa_close_gathering',{},'تم إغلاق القعدة')}}>إغلاق القعدة</button></>:<><input className={inp} placeholder="اسم القعدة (اختياري)" value={title} onChange={e=>setTitle(e.target.value)}/><button className={btn+' w-full'} disabled={busy} onClick={async()=>{if(await perform('qa_start_gathering',{p_title:title},'بدأت قعدة جديدة')){ref.current='';setTitle('');load()}}}>بدء قعدة جديدة</button></>}</div>
+      <div className={card+' space-y-2'}>{active?<><p>القعدة النشطة: <b>{active.title}</b></p><button className={btn+' w-full'} disabled={busy} onClick={closeGathering}>إغلاق القعدة</button></>:<><input className={inp} placeholder="اسم القعدة (اختياري)" value={title} onChange={e=>setTitle(e.target.value)}/><button className={btn+' w-full'} disabled={busy} onClick={async()=>{if(await perform('qa_start_gathering',{p_title:title},'بدأت قعدة جديدة')){ref.current='';setTitle('');load()}}}>بدء قعدة جديدة</button></>}</div>
       {gs.map(g=><div key={g.id} className={card+' flex items-center justify-between'}><div><b>{g.title}</b><div className="text-xs text-stone-500">{dt(g.started_at)}{g.closed_at?' → '+dt(g.closed_at):''}</div></div><button className={btn2} onClick={()=>{pick(g.id);setTab('orders')}}>عرض</button></div>)}
     </>}
     {add&&<div className="fixed inset-0 z-30 flex items-center justify-center bg-black/45 p-4"><form role="dialog" aria-modal="true" aria-label="إضافة مشروب لعضو" className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5" onSubmit={async e=>{e.preventDefault();if(await perform('qa_admin_add_order',{p_user:add.user,p_item:add.item,p_qty:Number(add.qty),p_received:true},'تمت إضافة المشروب على حساب العضو'))setAdd(null)}}>
